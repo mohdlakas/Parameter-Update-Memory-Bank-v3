@@ -4,7 +4,7 @@ import numpy as np
 import logging
 from memory_bank import MemoryBank
 from intelligent_selector import IntelligentSelector
-from quality_metric import QualityMetric
+from quality_metric2 import QualityMetric, GenerousQualityMetric
 from embedding_generator import EmbeddingGenerator
 
 class PUMBFederatedServer:
@@ -23,7 +23,11 @@ class PUMBFederatedServer:
             initial_rounds=getattr(args, 'pumb_initial_rounds', 3),
             exploration_ratio=getattr(args, 'pumb_exploration_ratio', 0.7)
         )
+
+        #self.quality_calc = GenerousQualityMetric()
         self.quality_calc = QualityMetric()
+        
+
         self.embedding_gen = EmbeddingGenerator(embedding_dim=embedding_dim)
 
         # Track global direction/state
@@ -34,11 +38,29 @@ class PUMBFederatedServer:
         # Setup logging
         self.logger = logging.getLogger('PUMB_FederatedServer')
         if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+            # Create logs directory
+            import os
+            from datetime import datetime
+            log_dir = '../save/logs'
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # Create timestamped log file
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            log_file = f'{log_dir}/pumb_server_{timestamp}.log'
+            
+            # File handler
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            
+            # Console handler (optional - keep both)
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(console_handler)  # Remove this line if you want file-only
             self.logger.setLevel(logging.INFO)
+            
+            print(f"📝 PUMB Server logging to: {log_file}")
 
     def select_clients(self, available_clients, num_clients):
         """Select clients for the current round."""
@@ -103,7 +125,7 @@ class PUMBFederatedServer:
 
     def _aggregate_updates(self, client_models, aggregation_weights):
         """
-        THEORY-ALIGNED: Aggregate full client model states as per Algorithm 1 line 13
+        THEORY-ALIGNED: Aggregate full client model states as per Algorithm 1 
         θ^t ← Σ(i∈S_t) w_i^t θ_i^t
         """
         new_state_dict = {}
@@ -270,3 +292,4 @@ class PUMBFederatedServer:
             self.memory_bank.load_state(checkpoint['memory_bank_state'])
             
         self.logger.info(f"Checkpoint loaded from {filepath}, resuming from round {self.current_round}")
+
