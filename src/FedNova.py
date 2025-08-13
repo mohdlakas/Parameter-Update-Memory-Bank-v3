@@ -1,21 +1,17 @@
-# filepath: c:\Users\Mohamed\Desktop\UpdatedLogic\src\Algorithms\federated_fednova_main.py
 import os
 import copy
 import time
-import pickle
 import numpy as np
 from tqdm import tqdm
 import torch
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.use('Agg')
 
-from options import args_parser
 from update import LocalUpdate, test_inference
 from models import CNNCifar
-from utils_dir import (get_dataset, exp_details, plot_data_distribution,
-                      ComprehensiveAnalyzer, write_comprehensive_analysis)
-from datetime import datetime
+from utils_dir import get_dataset, exp_details
+
+import sys
+sys.path.append('../')
+from options import args_parser
 
 class FedNovaLocalUpdate(LocalUpdate):
     def __init__(self, args, dataset, idxs, logger):
@@ -25,11 +21,7 @@ class FedNovaLocalUpdate(LocalUpdate):
     def update_weights_fednova(self, model, global_round):
         model.train()
         epoch_loss = []
-        
-        # Store initial weights
         w_old = copy.deepcopy(model.state_dict())
-        
-        # Track gradient norm for normalization
         gradient_sqnorm = 0.0
         
         for iter in range(self.args.local_ep):
@@ -52,10 +44,8 @@ class FedNovaLocalUpdate(LocalUpdate):
                 
             epoch_loss.append(sum(batch_loss)/len(batch_loss))
         
-        # Calculate effective local steps (tau)
+        # Calculate effective local steps
         effective_tau = self.tau
-        
-        # Calculate covariance shift
         w_new = model.state_dict()
         coeff = effective_tau - self.args.gm * gradient_sqnorm
         
@@ -66,11 +56,7 @@ class FedNovaLocalUpdate(LocalUpdate):
         return w_new, sum(epoch_loss) / len(epoch_loss), effective_tau
 
 def fednova_aggregate(local_weights, taus, gm=1.0):
-    """FedNova aggregation with normalized averaging"""
-    # Calculate total tau
     total_tau = sum(taus)
-    
-    # Weighted average based on effective local steps
     global_weights = {}
     for key in local_weights[0].keys():
         weighted_sum = torch.zeros_like(local_weights[0][key])
@@ -78,27 +64,20 @@ def fednova_aggregate(local_weights, taus, gm=1.0):
             weight = taus[i] / total_tau
             weighted_sum += weight * weights[key]
         global_weights[key] = weighted_sum
-    
     return global_weights
 
 if __name__ == '__main__':
     start_time = time.time()
     args = args_parser()
-    
-    # Set FedNova defaults
     args.gm = getattr(args, 'gm', 1.0)
     args.tau = getattr(args, 'tau', None)
-    
-    exp_details(args)
     
     if args.gpu_id:
         torch.cuda.set_device(args.gpu_id)
     device = 'cuda' if args.gpu else 'cpu'
     
-    # Load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
     
-    # Build model
     if args.model == 'cnn':
         if args.dataset == 'cifar100':
             args.num_classes = 100
@@ -108,20 +87,16 @@ if __name__ == '__main__':
             exit(f'Error: unsupported dataset {args.dataset}')
             
         global_model = CNNCifar(args)
-        print(f"FedNova Model created with {global_model.fc2.out_features} output classes")
     else:
         exit('Error: only CNN model is supported')
     
     global_model.to(device)
     global_model.train()
     
-    analyzer = ComprehensiveAnalyzer()
     train_loss, train_accuracy = [], []
-    print_every = 2
     
     for epoch in tqdm(range(args.epochs)):
-        round_start_time = time.time()
-        print(f'\n | FedNova Global Training Round : {epoch+1} |\n')
+        print(f'Round {epoch+1}/{args.epochs}')
         
         local_weights, local_losses = [], []
         taus = []
@@ -155,7 +130,6 @@ if __name__ == '__main__':
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                     idxs=user_groups[c], logger=None)
             correct, total = 0, 0
-            criterion = torch.nn.NLLLoss().to(device)
             
             with torch.no_grad():
                 for images, labels in local_model.trainloader:
@@ -170,40 +144,12 @@ if __name__ == '__main__':
         
         train_accuracy.append(np.mean(list_acc))
         
-        # Track for analysis
-        round_time = time.time() - round_start_time
-        test_acc_current = None
-        if epoch % print_every == 0 or epoch == args.epochs - 1:
-            test_acc_current, _ = test_inference(args, global_model, test_dataset)
-            print(f"FedNova Round {epoch}: Test Accuracy = {test_acc_current:.4f}")
-        
-        # Log data to analyzer
-        analyzer.log_round_data(
-            round_num=epoch,
-            train_acc=train_accuracy[-1],
-            train_loss=train_loss[-1],
-            test_acc=test_acc_current,
-            selected_clients=list(idxs_users),
-            aggregation_weights={i: taus[j]/sum(taus) for j, i in enumerate(idxs_users)},
-            client_reliabilities={i: 1.0 for i in idxs_users},
-            client_qualities={i: 1.0 for i in idxs_users},
-            memory_bank_size=None,
-            avg_similarity=None,
-            round_time=round_time
-        )
+        if epoch % 1 == 0:
+            test_acc, _ = test_inference(args, global_model, test_dataset)
+            print(f"Round {epoch+1}: Test Accuracy = {test_acc*100:.2f}%")
     
-    # Final evaluation
     test_acc, _ = test_inference(args, global_model, test_dataset)
-    total_time = time.time() - start_time
-    
-    print(f' \n FedNova Results after {args.epochs} global rounds:')
-    print("|---- Avg Train Accuracy: {:.2f}%".format(100*train_accuracy[-1]))
-    print("|---- Final Test Accuracy: {:.2f}%".format(100*test_acc))
-    
-    # Save and analyze results
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    comprehensive_filename = f"../save/logs/fednova_comprehensive_analysis_{timestamp}.txt"
-    write_comprehensive_analysis(analyzer, args, test_acc, total_time, comprehensive_filename, getattr(args, 'seed', None))
-    
+    print(f"Final Test Accuracy: {test_acc*100:.2f}%")
     print(f"\n✅ FedNova analysis saved to: {comprehensive_filename}")
+
     print(f"🔍 FedNova Final Test Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")
