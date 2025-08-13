@@ -32,8 +32,14 @@ def run_experiment(script_name, method_name, args_dict):
             output_lines = result.stdout.split('\n')
             for line in output_lines:
                 if "Final Test Accuracy" in line:
-                    acc_str = line.split(':')[1].strip().replace('%', '').replace(')', '')
-                    final_test_acc = float(acc_str) / 100.0
+                    match = re.search(r'([\d\.]+)%', line)
+                    if match:
+                        final_test_acc = float(match.group(1)) / 100.0
+                    else:
+                        # fallback: try to extract float from the line
+                        nums = re.findall(r'[\d\.]+', line)
+                        if nums:
+                            final_test_acc = float(nums[-1]) / 100.0
                     break
             
             print(f"✅ {method_name} completed: {final_test_acc:.4f} ({final_test_acc*100:.2f}%)")
@@ -64,7 +70,12 @@ def parse_training_curves(output_text, method_name):
     lines = output_text.split('\n')
     
     for line in lines:
-        # Look for different output patterns from different algorithms
+        # NEW PATTERN: "Round X: Test Accuracy = Y%"  
+        test_only_match = re.search(r'Round\s+(\d+).*?Test\s+Accuracy\s*=\s*([\d\.]+)%', line, re.IGNORECASE)
+        if test_only_match:
+            test_acc = float(test_only_match.group(2)) / 100.0
+            test_accuracies.append(test_acc)
+            continue
         
         # Pattern 1: "Round X: Train Acc = Y%, Test Acc = Z%"
         round_match = re.search(r'Round\s+(\d+).*?Train.*?Acc.*?(\d+\.?\d*)%.*?Test.*?Acc.*?(\d+\.?\d*)%', line, re.IGNORECASE)
@@ -112,6 +123,9 @@ def create_comparison_plots(all_results, timestamp):
         if data and data['final_accuracy']:
             methods.append(method)
             final_accs.append(data['final_accuracy'] * 100)
+    if not final_accs:
+        print("No successful experiments to plot.")
+        return None
     
     bars = ax1.bar(methods, final_accs, color=colors[:len(methods)])
     ax1.set_title('Final Test Accuracy Comparison', fontsize=14, fontweight='bold')
@@ -171,8 +185,8 @@ def create_comparison_plots(all_results, timestamp):
     plt.tight_layout()
     
     # Save plots
-    os.makedirs('../save/images', exist_ok=True)
-    plot_path = f'../save/images/comprehensive_comparison_{timestamp}.png'
+    os.makedirs('../../save/images', exist_ok=True)
+    plot_path = f'../../save/images/comprehensive_comparison_{timestamp}.png'
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
     
@@ -200,13 +214,13 @@ def save_detailed_results(all_results, timestamp):
     df_summary = pd.DataFrame(detailed_data)
     
     # Save summary CSV
-    os.makedirs('../save/logs', exist_ok=True)
-    summary_path = f'../save/logs/detailed_comparison_{timestamp}.csv'
+    os.makedirs('../../save/logs', exist_ok=True)
+    summary_path = f'../../save/logs/detailed_comparison_{timestamp}.csv'
     df_summary.to_csv(summary_path, index=False)
     
     # Save individual training curves
-    curves_path = f'../save/logs/training_curves_{timestamp}.csv'
-    
+    curves_path = f'../../save/logs/training_curves_{timestamp}.csv'
+
     curves_data = []
     max_rounds = max([len(data['train_accuracies']) if data and data['train_accuracies'] else 0 
                      for data in all_results.values()])
@@ -237,14 +251,14 @@ def save_detailed_results(all_results, timestamp):
 def main():
     # Experiment configuration
     base_args = {
-        'dataset': 'cifar10',
+        'dataset': 'cifar',
         'model': 'cnn',
-        'epochs': 50,  # Reduced for faster testing
-        'num_users': 100,
+        'epochs': 3,  # Reduced for faster testing
+        'num_users': 20,
         'frac': 0.1,
-        'local_ep': 5,
-        'local_bs': 10,
-        'lr': 0.01,
+        'local_ep': 3,
+        'local_bs': 32,
+        'lr': 0.0005,
         'iid': 0,
         'alpha': 0.5,
         'seed': 42
@@ -253,10 +267,10 @@ def main():
     # Define experiments
     experiments = [
         ('../federated_main.py', 'FedAvg', base_args),
-        ('federated_fedprox_main.py', 'FedProx', {**base_args, 'mu': 0.01}),
-        ('federated_scaffold_main.py', 'SCAFFOLD', base_args),
-        ('federated_power_of_choice_main.py', 'Power-of-Choice', {**base_args, 'd': 10}),
-        ('federated_fednova_main.py', 'FedNova', {**base_args, 'gm': 1.0, 'tau': 5}),
+        ('FedProx.py', 'FedProx', {**base_args, 'mu': 0.01}),
+        ('SCAFFOLD.py', 'SCAFFOLD', base_args),
+        ('Power_of_Choice.py', 'Power-of-Choice', {**base_args, 'd': 10}),
+        ('FedNova.py', 'FedNova', {**base_args, 'gm': 1.0, 'tau': 5}),
         ('../federated_pumb_main.py', 'PUMB', {**base_args, 'pumb_exploration_ratio': 0.4, 'pumb_initial_rounds': 10}),
     ]
     
