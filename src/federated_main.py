@@ -190,11 +190,14 @@ if __name__ == '__main__':
             # Normalize by data size for basic reliability metric
             reliability = (loss_improvement + 1e-6) * data_sizes[client_id] / 1000.0
             client_reliabilities[client_id] = min(1.0, reliability)  # Cap at 1.0
-        
+
+        test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
+      
         # Test accuracy every 5 rounds for detailed tracking
-        test_acc_current = None
-        if (epoch + 1) % 5 == 0:
-            test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        #test_acc_current = None
+        #if (epoch + 1) % 5 == 0:
+        #    test_acc_current, _ = test_inference(args, global_model, test_dataset)
         
         # Log all data to analyzer (adapted for FedAvg)
         analyzer.log_round_data(
