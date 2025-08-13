@@ -240,6 +240,10 @@ if __name__ == '__main__':
         loss_avg = np.mean([loss_after for _, loss_after in client_losses.values()])
         train_loss.append(loss_avg)
 
+        # ADD THIS: Print test accuracy every round for auto_compare parsing
+        test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
+      
         # FIX: Calculate round time properly
         round_time = time.time() - round_start_time
         
