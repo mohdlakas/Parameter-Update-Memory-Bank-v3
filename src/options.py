@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Python version: 3.6
 
+
 import argparse
 
 def args_parser():
@@ -44,12 +45,44 @@ def args_parser():
                              'Only works when --plot_data is set to 1')
                              
     # PUMB-specific arguments
-    parser.add_argument('--pumb_alpha', type=float, default=0.7,
-                        help='Reliability factor for PUMB aggregation weights (0=data size only, 1=reliability only)')
-    parser.add_argument('--pumb_exploration_ratio', type=float, default=0.4,
+    parser.add_argument('--pumb_exploration_ratio', type=float, default=0.5,
                         help='Exploration ratio for intelligent client selection in PUMB')
-    parser.add_argument('--pumb_initial_rounds', type=int, default=3,
+    parser.add_argument('--pumb_initial_rounds', type=int, default=10,
                         help='Number of initial rounds for cold start in PUMB (uses vanilla aggregation)')
+
+    # ✅ ADD: FedProx-specific arguments
+    parser.add_argument('--mu', type=float, default=0.01,
+                        help='FedProx proximal term coefficient')
+
+    # ✅ ADD: SCAFFOLD-specific arguments
+    parser.add_argument('--scaffold_lr', type=float, default=None,
+                        help='SCAFFOLD learning rate (if None, uses --lr)')
+    parser.add_argument('--scaffold_global_lr', type=float, default=1.0,
+                        help='SCAFFOLD global learning rate for server updates')
+
+    # ✅ ADD: Power-of-Choice specific arguments
+    parser.add_argument('--d', type=int, default=10,
+                        help='Power-of-Choice: number of candidates to sample for each client selection')
+    parser.add_argument('--power_strategy', type=str, default='largest_data',
+                        choices=['largest_data', 'random', 'smallest_loss'],
+                        help='Power-of-Choice selection strategy: largest_data, random, or smallest_loss')
+
+    # ✅ ADD: FedNova specific arguments
+    parser.add_argument('--fednovaaggmethod', type=str, default='baseline',
+                        choices=['baseline', 'fedavg'],
+                        help='FedNova aggregation method')
+    parser.add_argument('--gm', type=float, default=1.0,
+                        help='FedNova global momentum parameter')
+    parser.add_argument('--tau', type=int, default=None,
+                        help='FedNova local steps normalization (if None, uses local_ep)')
+
+    # ✅ ADD: General comparison arguments
+    parser.add_argument('--algorithm', type=str, default='fedavg',
+                        choices=['fedavg', 'fedprox', 'scaffold', 'power_of_choice', 'pumb', 'fednova', 'lag'],
+                        help='Federated learning algorithm to use')
+    
+    parser.add_argument('--comparison_mode', type=int, default=0,
+                        help='Set to 1 to run in comparison mode (saves detailed metrics)')
 
     # model arguments
     parser.add_argument('--model', type=str, default='cnn', help='model name')
@@ -66,19 +99,14 @@ def args_parser():
     parser.add_argument('--max_pool', type=str, default='True',
                         help="Whether use max pooling rather than strided convolutions")
 
-    # dataset and system arguments  # Better section name
-    parser.add_argument('--dataset', type=str, default='mnist', 
-                        help="name of dataset: 'mnist', 'fmnist', 'cifar', 'cifar100'")  # Added supported datasets
+    # dataset and system arguments
+    parser.add_argument('--dataset', type=str, default='cifar10', 
+                        help="name of dataset: 'cifar10', 'cifar100'")
     parser.add_argument('--num_classes', type=int, default=10, 
-                        help="number of classes")  # Fixed line break
+                        help="number of classes (10 for cifar10, 100 for cifar100)")
     parser.add_argument('--iid', type=int, default=1,
                         help='Default set to IID. Set to 0 for non-IID.')
     
-    # LEGACY: unequal splits (commented out - use varying alpha instead)
-    # parser.add_argument('--unequal', type=int, default=0,
-    #                     help='LEGACY: whether to use unequal data splits for non-i.i.d setting. '
-    #                          'Use varying alpha values in Dirichlet distribution instead')
-
     # system arguments
     parser.add_argument('--gpu_id', type=int, default=None, help="GPU ID to use")
     parser.add_argument('--gpu', default=None, 
@@ -92,3 +120,5 @@ def args_parser():
     
     args = parser.parse_args()
     return args
+
+
