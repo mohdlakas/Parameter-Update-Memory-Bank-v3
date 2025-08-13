@@ -1,25 +1,22 @@
 import os
 import copy
 import time
-import pickle
 import numpy as np
 from tqdm import tqdm
 import torch
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.use('Agg')
 
-from options import args_parser
 from update import LocalUpdate, test_inference
 from models import CNNCifar
-from utils_dir import (get_dataset, exp_details, plot_data_distribution,
-                      ComprehensiveAnalyzer, write_comprehensive_analysis)
-from datetime import datetime
+from utils_dir import get_dataset, exp_details
+
+import sys
+sys.path.append('../')
+from options import args_parser
 
 class FedProxLocalUpdate(LocalUpdate):
     def __init__(self, args, dataset, idxs, logger, mu=0.01):
         super().__init__(args, dataset, idxs, logger)
-        self.mu = mu  # Proximal term coefficient
+        self.mu = mu
         
     def update_weights(self, model, global_round):
         model.train()
@@ -52,11 +49,7 @@ class FedProxLocalUpdate(LocalUpdate):
 if __name__ == '__main__':
     start_time = time.time()
     args = args_parser()
-    
-    # Add FedProx specific parameter
-    args.mu = getattr(args, 'mu', 0.01)  # Proximal term coefficient
-    
-    exp_details(args)
+    args.mu = getattr(args, 'mu', 0.01)
     
     if args.gpu_id:
         torch.cuda.set_device(args.gpu_id)
@@ -64,15 +57,6 @@ if __name__ == '__main__':
     
     # Load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
-    
-    # Plot client data distribution
-    plot_data_distribution(
-        user_groups, train_dataset,
-        save_path='../save/images/data_distribution_fedprox_{}_iid[{}]_alpha[{}].png'.format(
-            args.dataset, args.iid, getattr(args, 'alpha', 'NA')
-        ),
-        title="FedProx Client Data Distribution (IID={})".format(args.iid)
-    )
     
     # Build model
     if args.model == 'cnn':
@@ -84,22 +68,16 @@ if __name__ == '__main__':
             exit(f'Error: unsupported dataset {args.dataset}')
             
         global_model = CNNCifar(args)
-        print(f"FedProx Model created with {global_model.fc2.out_features} output classes")
     else:
         exit('Error: only CNN model is supported')
     
     global_model.to(device)
     global_model.train()
     
-    # Initialize analyzer
-    analyzer = ComprehensiveAnalyzer()
-    
     train_loss, train_accuracy = [], []
-    print_every = 2
     
     for epoch in tqdm(range(args.epochs)):
-        round_start_time = time.time()
-        print(f'\n | FedProx Global Training Round : {epoch+1} |\n')
+        print(f'Round {epoch+1}/{args.epochs}')
         
         local_weights, local_losses = [], []
         m = max(int(args.frac * args.num_users), 1)
@@ -112,7 +90,7 @@ if __name__ == '__main__':
             local_weights.append(copy.deepcopy(w))
             local_losses.append(copy.deepcopy(loss))
         
-        # FedAvg aggregation (same as original)
+        # FedAvg aggregation
         global_weights = {}
         for key in local_weights[0].keys():
             global_weights[key] = torch.stack([local_weights[i][key] for i in range(len(local_weights))], 0).mean(0)
@@ -128,7 +106,6 @@ if __name__ == '__main__':
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                     idxs=user_groups[c], logger=None)
             correct, total = 0, 0
-            criterion = torch.nn.NLLLoss().to(device)
             
             with torch.no_grad():
                 for images, labels in local_model.trainloader:
@@ -143,45 +120,11 @@ if __name__ == '__main__':
         
         train_accuracy.append(np.mean(list_acc))
         
-        # Track for analysis
-        round_time = time.time() - round_start_time
-        test_acc_current = None
-        if epoch % print_every == 0 or epoch == args.epochs - 1:
-            test_acc_current, _ = test_inference(args, global_model, test_dataset)
-            print(f"FedProx Round {epoch}: Test Accuracy = {test_acc_current:.4f}")
-        
-        # Log data to analyzer
-        analyzer.log_round_data(
-            round_num=epoch,
-            train_acc=train_accuracy[-1],
-            train_loss=train_loss[-1],
-            test_acc=test_acc_current,
-            selected_clients=list(idxs_users),
-            aggregation_weights={i: 1.0/len(idxs_users) for i in idxs_users},
-            client_reliabilities={i: 1.0 for i in idxs_users},
-            client_qualities={i: 1.0 for i in idxs_users},
-            memory_bank_size=None,
-            avg_similarity=None,
-            round_time=round_time
-        )
+        # Print progress every round
+        if epoch % 1 == 0:
+            test_acc, _ = test_inference(args, global_model, test_dataset)
+            print(f"Round {epoch+1}: Test Accuracy = {test_acc*100:.2f}%")
     
     # Final evaluation
     test_acc, _ = test_inference(args, global_model, test_dataset)
-    total_time = time.time() - start_time
-    
-    print(f' \n FedProx Results after {args.epochs} global rounds:')
-    print("|---- Avg Train Accuracy: {:.2f}%".format(100*train_accuracy[-1]))
-    print("|---- Final Test Accuracy: {:.2f}%".format(100*test_acc))
-    
-    # Save results
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    file_name = f'../save/objects/FedProx_{args.dataset}_{args.model}_{args.epochs}_C[{args.frac}]_iid[{args.iid}]_E[{args.local_ep}]_B[{args.local_bs}].pkl'
-    with open(file_name, 'wb') as f:
-        pickle.dump([train_loss, train_accuracy], f)
-    
-    # Generate comprehensive analysis
-    comprehensive_filename = f"../save/logs/fedprox_comprehensive_analysis_{timestamp}.txt"
-    write_comprehensive_analysis(analyzer, args, test_acc, total_time, comprehensive_filename, getattr(args, 'seed', None))
-    
-    print(f"\n✅ FedProx analysis saved to: {comprehensive_filename}")
-    print(f"🔍 FedProx Final Test Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")
+    print(f"Final Test Accuracy: {test_acc*100:.2f}%")
