@@ -4,21 +4,36 @@ import time
 import numpy as np
 from tqdm import tqdm
 import torch
-
-from update import LocalUpdate, test_inference
-from models import CNNCifar
-from utils_dir import get_dataset, exp_details
-
 import sys
+
 sys.path.append('../')
 from options import args_parser
+from update import LocalUpdate, test_inference
+from models import CNNCifar
+from utils_dir import get_dataset, exp_details, check_gpu_pytorch
+
 
 class SCAFFOLDLocalUpdate(LocalUpdate):
     def __init__(self, args, dataset, idxs, logger):
         super().__init__(args, dataset, idxs, logger)
         
     def update_weights_scaffold(self, model, global_round, c_global, c_local):
+        # Set model to train mode
         model.train()
+        
+        # Initialize device and criterion if not already done
+        if self.device is None:
+            self.device = next(model.parameters()).device
+            self.criterion = self.criterion.to(self.device)
+        
+        # Initialize optimizer for the current model
+        if self.args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr,
+                                      momentum=self.args.momentum)
+        elif self.args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr,
+                                       weight_decay=1e-4)
+        
         epoch_loss = []
         w_old = copy.deepcopy(model.state_dict())
         
@@ -37,7 +52,7 @@ class SCAFFOLDLocalUpdate(LocalUpdate):
                     if param.grad is not None:
                         param.grad.data += c_global[name] - c_local[name]
                 
-                self.optimizer.step()
+                optimizer.step()
                 batch_loss.append(loss.item())
                 
             epoch_loss.append(sum(batch_loss)/len(batch_loss))
@@ -60,10 +75,11 @@ if __name__ == '__main__':
     start_time = time.time()
     args = args_parser()
     
-    if args.gpu_id:
-        torch.cuda.set_device(args.gpu_id)
-    device = 'cuda' if args.gpu else 'cpu'
-    
+    # if args.gpu_id:
+    #     torch.cuda.set_device(args.gpu_id)
+    # device = 'cuda' if args.gpu else 'cpu'
+    device = check_gpu_pytorch()
+
     train_dataset, test_dataset, user_groups = get_dataset(args)
     
     if args.model == 'cnn':
@@ -151,7 +167,7 @@ if __name__ == '__main__':
         
         if epoch % 1 == 0:
             test_acc, _ = test_inference(args, global_model, test_dataset)
-            print(f"Round {epoch+1}: Test Accuracy = {test_acc*100:.2f}%")
-    
+            print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc*100:.2f}%, Loss = {loss_avg:.4f}")
     test_acc, _ = test_inference(args, global_model, test_dataset)
     print(f"Final Test Accuracy: {test_acc*100:.2f}%")
+
