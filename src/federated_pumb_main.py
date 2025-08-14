@@ -12,7 +12,7 @@ matplotlib.use('Agg')
 
 from options import args_parser
 from update import LocalUpdate, test_inference
-from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
+from models import CNNCifar
 
 from federated_PUMB import PUMBFederatedServer
 from utils_dir import (get_dataset, exp_details, plot_data_distribution,
@@ -48,27 +48,42 @@ if __name__ == '__main__':
     
     # Build model
     if args.model == 'cnn':
-        if args.dataset == 'mnist':
-            global_model = CNNMnist(args=args)
-        elif args.dataset == 'fmnist':
-            global_model = CNNFashion_Mnist(args=args)
-        elif args.dataset == 'cifar' or args.dataset == 'cifar100':
-            global_model = CNNCifar(args=args)
-    elif args.model == 'mlp':
-        img_size = train_dataset[0][0].shape
-        len_in = 1
-        for x in img_size:
-            len_in *= x
-        global_model = MLP(dim_in=len_in, dim_hidden=64, dim_out=args.num_classes)
+        # Force correct number of classes before model creation
+        if args.dataset == 'cifar100':
+            args.num_classes = 100
+            print(f"FORCED: Setting num_classes to {args.num_classes} for CIFAR-100")
+        elif args.dataset == 'cifar' or args.dataset == 'cifar10':
+            args.num_classes = 10
+            print(f"FORCED: Setting num_classes to {args.num_classes} for CIFAR-10")
+        else:
+            exit(f'Error: unsupported dataset {args.dataset}. Only cifar10 and cifar100 are supported.')
+            
+        # Create model with correct output dimensions
+        global_model = CNNCifar(args)
+        print(f"Model created with {global_model.fc2.out_features} output classes")
+        
+        global_model.to(device)
+        
+        # ✅ ADD THIS DEBUG:
+        print(f"=== DIMENSION DEBUG ===")
+        dummy = torch.randn(2, 3, 32, 32).to(device)
+        try:
+            with torch.no_grad():
+                output = global_model(dummy)
+                print(f"✅ SUCCESS: Output shape = {output.shape}")
+                print(f"Expected: [2, {args.num_classes}]")
+        except Exception as e:
+            print(f"❌ MODEL ERROR: {e}")
+            exit("Fix model dimensions before continuing")
     else:
-        exit('Error: unrecognized model')
+        exit('Error: only CNN model is supported. Use --model=cnn')
 
-    global_model.to(device)
+    
     global_model.train()
 
     optimizer = torch.optim.SGD(global_model.parameters(), lr=args.lr)
-    loss_fn = torch.nn.CrossEntropyLoss()
-
+    #loss_fn = torch.nn.CrossEntropyLoss()
+    loss_fn = torch.nn.NLLLoss()
     # Initialize PUMB server
     server = PUMBFederatedServer(global_model, optimizer, loss_fn, args, embedding_dim=512)
 
@@ -243,7 +258,7 @@ if __name__ == '__main__':
         # ADD THIS: Print test accuracy every round for auto_compare parsing
         test_acc_current, _ = test_inference(args, global_model, test_dataset)
         print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
-      
+        
         # FIX: Calculate round time properly
         round_time = time.time() - round_start_time
         
@@ -274,8 +289,9 @@ if __name__ == '__main__':
             # FIXED: Evaluate on training data instead of test data
             correct, total = 0, 0
             loss_sum = 0
-            criterion = torch.nn.CrossEntropyLoss().to(device)
-            
+            #criterion = torch.nn.CrossEntropyLoss().to(device)
+            criterion = torch.nn.NLLLoss().to(device)
+
             with torch.no_grad():
                 for images, labels in local_model.trainloader:  # ← Use trainloader!
                     images, labels = images.to(device), labels.to(device)
@@ -389,3 +405,6 @@ if __name__ == '__main__':
     print(f"   Memory Bank Final Size: {memory_analysis.get('final_memory_size', 0)}")
     print(f"   Avg Client Reliability Improvement: {client_analysis.get('avg_reliability_improvement', 0):.4f}")
     print(f"\n📁 All results saved in ../save/logs/ directory")
+
+    # After final evaluation and analysis
+    print(f"Final Test Accuracy: {test_acc*100:.2f}%")
