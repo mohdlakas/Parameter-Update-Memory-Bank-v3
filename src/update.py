@@ -25,7 +25,7 @@ class LocalUpdate(object):
         self.logger = logger
         self.trainloader, self.validloader, self.testloader = self.train_val_test(
             dataset, list(idxs))
-        self.device = 'cuda' if args.gpu else 'cpu'
+        self.device = None  # Will be set when model is passed
         self.criterion = nn.NLLLoss().to(self.device)
 
     def train_val_test(self, dataset, idxs):
@@ -43,6 +43,10 @@ class LocalUpdate(object):
         return trainloader, validloader, testloader
 
     def update_weights(self, model, global_round):
+        # Set device from model
+        if self.device is None:
+            self.device = next(model.parameters()).device
+            self.criterion = self.criterion.to(self.device)
         model.train()
         epoch_loss = []
 
@@ -78,6 +82,9 @@ class LocalUpdate(object):
 
     def inference(self, model):
         """ Returns the inference accuracy and loss. """
+        if self.device is None:
+            self.device = next(model.parameters()).device
+            self.criterion = self.criterion.to(self.device)        
         model.eval()
         loss, total, correct = 0.0, 0.0, 0.0
 
@@ -94,11 +101,16 @@ class LocalUpdate(object):
         accuracy = correct/total
         return accuracy, loss
 
+
+
 def test_inference(args, model, test_dataset):
     """ Returns the test accuracy and loss. """
     model.eval()
     loss, total, correct = 0.0, 0.0, 0.0
-    device = 'cuda' if args.gpu else 'cpu'
+
+    # Get device from model parameters instead of args
+    device = next(model.parameters()).device
+
     criterion = nn.NLLLoss().to(device)
     testloader = DataLoader(test_dataset, batch_size=128, shuffle=False)
 
