@@ -112,9 +112,7 @@ if __name__ == '__main__':
     
     train_loss, train_accuracy = [], []
     
-    for epoch in tqdm(range(args.epochs)):
-        print(f'Round {epoch+1}/{args.epochs}')
-        
+    for epoch in tqdm(range(args.epochs)):        
         local_weights, local_losses = [], []
         taus = []
         
@@ -166,3 +164,4 @@ if __name__ == '__main__':
             print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc*100:.2f}%, Loss = {loss_avg:.4f}")
     test_acc, _ = test_inference(args, global_model, test_dataset)
     print(f"Final Test Accuracy: {test_acc*100:.2f}%")
+
