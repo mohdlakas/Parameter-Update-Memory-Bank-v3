@@ -19,12 +19,13 @@ from options import args_parser
 from update import LocalUpdate, test_inference
 from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
 from utils_dir import (get_dataset, exp_details, average_weights, plot_data_distribution,
-                      ComprehensiveAnalyzer, write_fedavg_comprehensive_analysis)
+                      ComprehensiveAnalyzer, write_fedavg_comprehensive_analysis, check_gpu_pytorch)
 
 
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')
+   
 
 if __name__ == '__main__':
     start_time = time.time()
@@ -39,19 +40,28 @@ if __name__ == '__main__':
     #if args.gpu_id is not None:
     #print(f"Using GPU {args.gpu_id}")
 
-    if args.gpu_id:
-        torch.cuda.set_device(args.gpu_id)
-    device = 'cuda' if args.gpu else 'cpu'
+    # FIX: Create save directories based on current working directory
+    # Check if we're in src/Algorithms (when run from auto_compare.py)
+    current_dir = os.getcwd()
+    if 'Algorithms' in current_dir or 'algorithms' in current_dir:
+        save_base = '../../save'  # From src/Algorithms to project root
+    else:
+        save_base = '../save'     # From src to project root
+    
+    # Create all necessary directories
+    os.makedirs(f'{save_base}/objects', exist_ok=True)
+    os.makedirs(f'{save_base}/images', exist_ok=True)
+    os.makedirs(f'{save_base}/logs', exist_ok=True)
 
+    # Check and set device
+    device = check_gpu_pytorch()
     # load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
 
     plot_data_distribution(
-    user_groups, train_dataset,
-    save_path='../save/images/data_distribution_{}_iid[{}]_alpha[{}].png'.format(
-        args.dataset, args.iid, getattr(args, 'alpha', 'NA')
-    ),
-    title="Client Data Distribution (IID={})".format(args.iid)
+        user_groups, train_dataset,
+        save_path=f'{save_base}/images/data_distribution_{args.dataset}_iid[{args.iid}]_alpha[{getattr(args, "alpha", "NA")}].png',
+        title="Client Data Distribution (IID={})".format(args.iid)
     )
 
 # Build model
@@ -173,8 +183,9 @@ if __name__ == '__main__':
             list_loss.append(loss)
 
         train_accuracy.append(sum(list_acc)/len(list_acc))
-        
-        
+        # FIX: Calculate test accuracy for printing
+        test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc_current*100:.2f}%, Loss = {loss_avg:.4f}")
         # Collect data for comprehensive analysis
         round_time = time.time() - round_start_time
         
@@ -192,13 +203,12 @@ if __name__ == '__main__':
             reliability = (loss_improvement + 1e-6) * data_sizes[client_id] / 1000.0
             client_reliabilities[client_id] = min(1.0, reliability)  # Cap at 1.0
         
-        test_acc_current, _ = test_inference(args, global_model, test_dataset)
-        print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
+  
 
-        # Test accuracy every 5 rounds for detailed tracking
-        test_acc_current = None
-        if (epoch + 1) % 5 == 0:
-            test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        # # Test accuracy every 5 rounds for detailed tracking
+        # test_acc_current = None
+        # if (epoch + 1) % 5 == 0:
+        #     test_acc_current, _ = test_inference(args, global_model, test_dataset)
         
         # Log all data to analyzer (adapted for FedAvg)
         analyzer.log_round_data(
@@ -215,13 +225,13 @@ if __name__ == '__main__':
             round_time=round_time
         )
 
-        # print global training loss after every 'i' rounds
-        if (epoch+1) % print_every == 0:
-            print(f' \nAvg Training Stats after {epoch+1} global rounds:')
-            print(f'Training Loss : {np.mean(np.array(train_loss))}')
-            print('Train Accuracy: {:.2f}% \n'.format(100*train_accuracy[-1]))
-            print(f'Selected clients: {len(selected_clients)}')
-            print(f'Avg client reliability: {np.mean(list(client_reliabilities.values())):.4f}')
+        # # print global training loss after every 'i' rounds
+        # if (epoch+1) % print_every == 0:
+        #     print(f' \nAvg Training Stats after {epoch+1} global rounds:')
+        #     print(f'Training Loss : {np.mean(np.array(train_loss))}')
+        #     print('Train Accuracy: {:.2f}% \n'.format(100*train_accuracy[-1]))
+        #     print(f'Selected clients: {len(selected_clients)}')
+        #     print(f'Avg client reliability: {np.mean(list(client_reliabilities.values())):.4f}')
 
     # Test inference after completion of training
     test_acc, test_loss = test_inference(args, global_model, test_dataset)
@@ -231,9 +241,7 @@ if __name__ == '__main__':
     print("|---- Test Accuracy: {:.2f}%".format(100*test_acc))
 
     # Saving the objects train_loss and train_accuracy:
-    file_name = '../save/objects/{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}].pkl'.\
-        format(args.dataset, args.model, args.epochs, args.frac, args.iid,
-                args.local_ep, args.local_bs)
+    file_name = f'{save_base}/objects/{args.dataset}_{args.model}_{args.epochs}_C[{args.frac}]_iid[{args.iid}]_E[{args.local_ep}]_B[{args.local_bs}].pkl'
 
     with open(file_name, 'wb') as f:
         pickle.dump([train_loss, train_accuracy], f)
@@ -260,22 +268,8 @@ if __name__ == '__main__':
 
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    plot_filename = (
-        '../save/images/fed_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_opt[{}]_lr[{}]_alpha[{}]_{}.png'
-        .format(
-            args.dataset,
-            args.model,
-            args.epochs,
-            args.frac,
-            args.iid,
-            args.local_ep,
-            args.local_bs,
-            getattr(args, 'optimizer', 'NA'),
-            getattr(args, 'lr', 'NA'),
-            getattr(args, 'alpha', 'NA'),
-            timestamp
-        )
-    )
+    plot_filename = f'{save_base}/images/fed_{args.dataset}_{args.model}_{args.epochs}_C[{args.frac}]_iid[{args.iid}]_E[{args.local_ep}]_B[{args.local_bs}]_opt[{getattr(args, "optimizer", "NA")}]_lr[{getattr(args, "lr", "NA")}]_alpha[{getattr(args, "alpha", "NA")}]_{timestamp}.png'
+ 
     plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
     plt.close()
     
@@ -290,7 +284,7 @@ if __name__ == '__main__':
     # print(f"📊 Basic experiment summary saved to: fedavg_experiment_summary_{timestamp}.txt")
     # Generate FedAvg-specific comprehensive analysis report
 
-    fedavg_filename = f"../save/logs/fedavg_comprehensive_analysis_{timestamp}.txt"
+    fedavg_filename = f"{save_base}/logs/fedavg_comprehensive_analysis_{timestamp}.txt"
     write_fedavg_comprehensive_analysis(analyzer, args, test_acc, total_time, fedavg_filename, experiment_seed)
 
     print(f"\n✅ FedAvg comprehensive analysis saved to: {fedavg_filename}")
