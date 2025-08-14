@@ -16,33 +16,38 @@ from models import CNNCifar
 
 from federated_PUMB import PUMBFederatedServer
 from utils_dir import (get_dataset, exp_details, plot_data_distribution,
-                      ComprehensiveAnalyzer, write_comprehensive_analysis)
+                      ComprehensiveAnalyzer, write_comprehensive_analysis, check_gpu_pytorch)
 
 from datetime import datetime
 
-# Create directories for saving results
-os.makedirs('../save/objects', exist_ok=True)
-os.makedirs('../save/images', exist_ok=True)
-os.makedirs('../save/logs', exist_ok=True)
+current_dir = os.getcwd()
+if 'Algorithms' in current_dir or 'algorithms' in current_dir:
+    save_base = '../../save'  # From src/Algorithms to project root
+else:
+    save_base = '../save'     # From src to project root
 
+# Create all necessary directories
+os.makedirs(f'{save_base}/objects', exist_ok=True)
+os.makedirs(f'{save_base}/images', exist_ok=True)
+os.makedirs(f'{save_base}/logs', exist_ok=True)
+
+    
 if __name__ == '__main__':
     start_time = time.time()
     args = args_parser()
     exp_details(args)
 
-    if args.gpu_id:
-        torch.cuda.set_device(args.gpu_id)
-    device = 'cuda' if args.gpu else 'cpu'
-
+    # if args.gpu_id:
+    #     torch.cuda.set_device(args.gpu_id)
+    # device = 'cuda' if args.gpu else 'cpu'
+    device = check_gpu_pytorch()
     # Load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
 
     # Plot client data distribution (IID/non-IID)
     plot_data_distribution(
         user_groups, train_dataset,
-        save_path='../save/images/data_distribution_{}_iid[{}]_alpha[{}].png'.format(
-            args.dataset, args.iid, getattr(args, 'alpha', 'NA')
-        ),
+        save_path=f'{save_base}/images/data_distribution_{args.dataset}_iid[{args.iid}]_alpha[{getattr(args, "alpha", "NA")}].png',
         title="Client Data Distribution (IID={})".format(args.iid)
     )
     
@@ -65,23 +70,29 @@ if __name__ == '__main__':
         global_model.to(device)
         
         # ✅ ADD THIS DEBUG:
-        print(f"=== DIMENSION DEBUG ===")
-        dummy = torch.randn(2, 3, 32, 32).to(device)
-        try:
-            with torch.no_grad():
-                output = global_model(dummy)
-                print(f"✅ SUCCESS: Output shape = {output.shape}")
-                print(f"Expected: [2, {args.num_classes}]")
-        except Exception as e:
-            print(f"❌ MODEL ERROR: {e}")
-            exit("Fix model dimensions before continuing")
-    else:
-        exit('Error: only CNN model is supported. Use --model=cnn')
+    #     print(f"=== DIMENSION DEBUG ===")
+    #     dummy = torch.randn(2, 3, 32, 32).to(device)
+    #     try:
+    #         with torch.no_grad():
+    #             output = global_model(dummy)
+    #             print(f"✅ SUCCESS: Output shape = {output.shape}")
+    #             print(f"Expected: [2, {args.num_classes}]")
+    #     except Exception as e:
+    #         print(f"❌ MODEL ERROR: {e}")
+    #         exit("Fix model dimensions before continuing")
+    # else:
+    #     exit('Error: only CNN model is supported. Use --model=cnn')
 
     
     global_model.train()
 
-    optimizer = torch.optim.SGD(global_model.parameters(), lr=args.lr)
+    #optimizer = torch.optim.SGD(global_model.parameters(), lr=args.lr)
+    if hasattr(args, 'optimizer') and args.optimizer.lower() == 'adam':
+        optimizer = torch.optim.Adam(global_model.parameters(), lr=args.lr, weight_decay=1e-4)
+        print(f"PUMB Server using Adam optimizer with lr={args.lr}")
+    else:
+        optimizer = torch.optim.SGD(global_model.parameters(), lr=args.lr)
+        print(f"PUMB Server using SGD optimizer with lr={args.lr}")
     #loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn = torch.nn.NLLLoss()
     # Initialize PUMB server
@@ -174,28 +185,28 @@ if __name__ == '__main__':
         
         # Update memory bank round count properly - ONLY ONCE per round
         server.memory_bank.update_round_count()
-        print(f"Round {epoch}: Memory bank round_count updated to {server.memory_bank.round_count}")
+        #print(f"Round {epoch}: Memory bank round_count updated to {server.memory_bank.round_count}")
 
         # Improved embedding diversity check
-        if epoch >= 5 and server.memory_bank.round_count > 5:
-            all_embeddings = []
-            for client_id in selected_clients:
-                if client_id in server.memory_bank.client_embeddings:
-                    recent_emb = server.memory_bank.client_embeddings[client_id][-1]
-                    all_embeddings.append(recent_emb.flatten())
+        # if epoch >= 5 and server.memory_bank.round_count > 5:
+        #     all_embeddings = []
+        #     for client_id in selected_clients:
+        #         if client_id in server.memory_bank.client_embeddings:
+        #             recent_emb = server.memory_bank.client_embeddings[client_id][-1]
+        #             all_embeddings.append(recent_emb.flatten())
             
-            if len(all_embeddings) > 1:
-                all_embeddings = np.array(all_embeddings)
-                pairwise_similarities = []
-                for i in range(len(all_embeddings)):
-                    for j in range(i+1, len(all_embeddings)):
-                        sim = np.dot(all_embeddings[i], all_embeddings[j]) / (
-                            np.linalg.norm(all_embeddings[i]) * np.linalg.norm(all_embeddings[j]) + 1e-8
-                        )
-                        pairwise_similarities.append(sim)
+        #     if len(all_embeddings) > 1:
+        #         all_embeddings = np.array(all_embeddings)
+        #         pairwise_similarities = []
+        #         for i in range(len(all_embeddings)):
+        #             for j in range(i+1, len(all_embeddings)):
+        #                 sim = np.dot(all_embeddings[i], all_embeddings[j]) / (
+        #                     np.linalg.norm(all_embeddings[i]) * np.linalg.norm(all_embeddings[j]) + 1e-8
+        #                 )
+        #                 pairwise_similarities.append(sim)
                 
-                print(f"Round {epoch}: Embedding diversity - mean similarity: {np.mean(pairwise_similarities):.4f}, "
-                      f"std: {np.std(pairwise_similarities):.4f}")
+        #         print(f"Round {epoch}: Embedding diversity - mean similarity: {np.mean(pairwise_similarities):.4f}, "
+        #               f"std: {np.std(pairwise_similarities):.4f}")
 
         # Get aggregation weights
         aggregation_weights = server.client_selector.get_aggregation_weights(
@@ -232,12 +243,12 @@ if __name__ == '__main__':
         analyzer.quality_scores_history.append(client_qualities)
 
         # Store aggregation weights for analysis
-        analyzer.track_aggregation_weights(epoch, aggregation_weights)
+        #analyzer.track_aggregation_weights(epoch, aggregation_weights)
         
         # Debug output for weights
-        print(f"Round {epoch}: Weights = {aggregation_weights}")
-        print(f"Round {epoch}: Weight sum = {sum(aggregation_weights.values())}")
-        print(f"Round {epoch}: Weight std = {np.std(list(aggregation_weights.values()))}")
+        #print(f"Round {epoch}: Weights = {aggregation_weights}")
+        #print(f"Round {epoch}: Weight sum = {sum(aggregation_weights.values())}")
+        #print(f"Round {epoch}: Weight std = {np.std(list(aggregation_weights.values()))}")
 
         # Update global model with weighted aggregation
         server.update_global_model(client_models, client_losses, data_sizes, aggregation_weights)
@@ -256,8 +267,8 @@ if __name__ == '__main__':
         train_loss.append(loss_avg)
 
         # ADD THIS: Print test accuracy every round for auto_compare parsing
-        test_acc_current, _ = test_inference(args, global_model, test_dataset)
-        print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
+        # test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        # print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
         
         # FIX: Calculate round time properly
         round_time = time.time() - round_start_time
@@ -307,16 +318,19 @@ if __name__ == '__main__':
 
 
         train_accuracy.append(np.mean(list_acc))
+        test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc_current*100:.2f}%, Loss = {loss_avg:.4f}")
+
         # Track accuracy for analysis
         analyzer.track_training_accuracy(train_accuracy[-1])
         
         # FIX: Comprehensive round data logging
         test_acc_for_round = None
-        if epoch % print_every == 0 or epoch == args.epochs - 1:
-            test_acc_for_round, _ = test_inference(args, global_model, test_dataset)
-            test_accuracy_history.append(test_acc_for_round)
-            analyzer.track_test_accuracy(test_acc_for_round)
-            print(f"Round {epoch}: Test Accuracy = {test_acc_for_round:.4f}")
+        # if epoch % print_every == 0 or epoch == args.epochs - 1:
+        #     test_acc_for_round, _ = test_inference(args, global_model, test_dataset)
+        #     test_accuracy_history.append(test_acc_for_round)
+        #     analyzer.track_test_accuracy(test_acc_for_round)
+        #     print(f"Round {epoch}: Test Accuracy = {test_acc_for_round:.4f}")
 
         # FIX: Log comprehensive round data
         analyzer.log_round_data(
@@ -342,9 +356,8 @@ if __name__ == '__main__':
     total_time = time.time() - start_time
 
     # Save train_loss and train_accuracy
-    file_name = '../save/objects/PUMB_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}].pkl'.\
-        format(args.dataset, args.model, args.epochs, args.frac, args.iid,
-                args.local_ep, args.local_bs)
+    file_name = f'{save_base}/objects/PUMB_{args.dataset}_{args.model}_{args.epochs}_C[{args.frac}]_iid[{args.iid}]_E[{args.local_ep}]_B[{args.local_bs}].pkl'
+
     with open(file_name, 'wb') as f:
         pickle.dump([train_loss, train_accuracy], f)
 
@@ -371,24 +384,15 @@ if __name__ == '__main__':
     plt.tight_layout()
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    plot_filename = (
-        '../save/images/PUMB_{}_{}_{}_C[{}]_iid[{}]_alpha[{}]_E[{}]_B[{}]_explr[{}]_lr[{}]_initR[{}]_loss_acc_{}.png'
-        .format(
-            args.dataset, args.model, args.epochs, args.frac, args.iid, args.local_ep, args.local_bs,
-            getattr(args, 'alpha', 'NA'),
-            getattr(args, 'pumb_exploration_ratio', 'NA'),
-            getattr(args, 'lr', 'NA'),
-            getattr(args, 'pumb_initial_rounds', 'NA'),
-            timestamp
-        )
-    )
+    plot_filename = f'{save_base}/images/PUMB_{args.dataset}_{args.model}_{args.epochs}_C[{args.frac}]_iid[{args.iid}]_alpha[{getattr(args, "alpha", "NA")}]_E[{args.local_ep}]_B[{args.local_bs}]_explr[{getattr(args, "pumb_exploration_ratio", "NA")}]_lr[{getattr(args, "lr", "NA")}]_initR[{getattr(args, "pumb_initial_rounds", "NA")}]_loss_acc_{timestamp}.png'
+
     plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
     plt.close()
 
     # Generate comprehensive analysis report
-    comprehensive_filename = f"../save/logs/comprehensive_analysis_{timestamp}.txt"
+    comprehensive_filename = f"{save_base}/logs/comprehensive_analysis_{timestamp}.txt"
     write_comprehensive_analysis(analyzer, args, test_acc, total_time, comprehensive_filename, experiment_seed)
-    
+
     print(f"\n✅ Comprehensive analysis saved to: {comprehensive_filename}")
     print(f"📊 Basic experiment summary saved to: experiment_summary_{timestamp}.txt")
     
