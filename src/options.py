@@ -9,17 +9,17 @@ def args_parser():
     parser = argparse.ArgumentParser()
 
     # federated arguments (Notation for the arguments followed from paper)
-    parser.add_argument('--epochs', type=int, default=10,
+    parser.add_argument('--epochs', type=int, default=50,
                         help="number of rounds of training")
     parser.add_argument('--num_users', type=int, default=100,
                         help="number of users: K")
-    parser.add_argument('--frac', type=float, default=0.25,
+    parser.add_argument('--frac', type=float, default=0.2,
                         help='the fraction of clients: C')
-    parser.add_argument('--local_ep', type=int, default=2,
+    parser.add_argument('--local_ep', type=int, default=5,
                         help="the number of local epochs: E")
-    parser.add_argument('--local_bs', type=int, default=10,
+    parser.add_argument('--local_bs', type=int, default=32,
                         help="local batch size: B")
-    parser.add_argument('--lr', type=float, default=0.01,
+    parser.add_argument('--lr', type=float, default=0.0005,
                         help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.5,
                         help='SGD momentum (default: 0.5)')
@@ -78,7 +78,7 @@ def args_parser():
 
     # ✅ ADD: General comparison arguments
     parser.add_argument('--algorithm', type=str, default='fedavg',
-                        choices=['fedavg', 'fedprox', 'scaffold', 'power_of_choice', 'pumb', 'fednova', 'lag'],
+                        choices=['fedavg', 'fedprox', 'scaffold', 'power_of_choice', 'pumb', 'fednova'],
                         help='Federated learning algorithm to use')
     
     parser.add_argument('--comparison_mode', type=int, default=0,
