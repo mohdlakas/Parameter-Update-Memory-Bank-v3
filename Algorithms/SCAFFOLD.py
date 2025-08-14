@@ -90,8 +90,10 @@ class SCAFFOLDLocalUpdate(LocalUpdate):
 def initialize_control_variates(model):
     c = {}
     for name, param in model.named_parameters():
-        c[name] = torch.zeros_like(param.data)
+        # Initialize with very small random values instead of zeros
+        c[name] = torch.randn_like(param.data) * 0.001
     return c
+
 
 
 if __name__ == '__main__':
@@ -196,4 +198,5 @@ if __name__ == '__main__':
     
     # Final test accuracy
     test_acc, _ = test_inference(args, global_model, test_dataset)
+
     print(f"Final Test Accuracy: {test_acc*100:.2f}%")
