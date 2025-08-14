@@ -2,7 +2,7 @@
 import numpy as np
 from collections import Counter, defaultdict
 from embedding_generator import EmbeddingGenerator
-from quality_metric import QualityMetric
+from quality_metric2 import QualityMetric
 from memory_bank import MemoryBank
 import logging
 import torch
@@ -185,7 +185,7 @@ class IntelligentSelector:
         weight_components = {}  # For debugging
         
         # FIX 1: Use memory bank's round count instead of checking conditions manually
-        print(f"DEBUG: Current round = {current_round}, Memory bank round_count = {self.memory_bank.round_count}")
+        #print(f"DEBUG: Current round = {current_round}, Memory bank round_count = {self.memory_bank.round_count}")
         
         for client_id in selected_clients:
             # 1. Reliability from memory bank
@@ -205,7 +205,7 @@ class IntelligentSelector:
                         last_round = max(self.memory_bank.global_states.keys())
                         last_global_state = self.memory_bank.global_states[last_round]
                         
-                        print(f"DEBUG: Computing similarity for client {client_id}, last_round={last_round}")
+                        #print(f"DEBUG: Computing similarity for client {client_id}, last_round={last_round}")
                         
                         # FIX: Compute parameter update with proper device handling
                         param_update = {}
@@ -222,22 +222,23 @@ class IntelligentSelector:
                         # Generate embedding and compute similarity
                         current_embedding = embedding_gen.generate_embedding(param_update)
                         similarity = self.memory_bank.compute_similarity(client_id, current_embedding)
-                        
-                        print(f"DEBUG: Client {client_id} computed similarity: {similarity:.3f}")
-                        
+
+                        #print(f"DEBUG: Client {client_id} computed similarity: {similarity:.3f}")
+
                     else:
-                        print(f"DEBUG: No global states available for similarity computation")
+                        #print(f"DEBUG: No global states available for similarity computation")
                         similarity = 0.5  # Keep default
                         
                 except Exception as e:
                     print(f"ERROR: Similarity computation failed for client {client_id}: {e}")
                     similarity = 0.5  # Fallback
             else:
-                if self.memory_bank.round_count <= 5:
-                    print(f"DEBUG: Round {self.memory_bank.round_count} <= 5, using default similarity")
-                else:
-                    print(f"DEBUG: No embedding generator provided")
-            
+                # if self.memory_bank.round_count <= 5:
+                #     print(f"DEBUG: Round {self.memory_bank.round_count} <= 5, using default similarity")
+                # else:
+                #     print(f"DEBUG: No embedding generator provided")
+                    pass
+
             # 3. Current quality (use recent average)
             recent_qualities = self.memory_bank.get_recent_qualities(client_id, window=3)
             quality = np.mean(recent_qualities) if recent_qualities else 0.5
@@ -264,13 +265,13 @@ class IntelligentSelector:
             weights = {client_id: uniform_weight for client_id in selected_clients}
         
         # Enhanced debugging
-        print(f"\n=== ROUND {current_round} WEIGHT CALCULATION ===")
-        for client_id in selected_clients:
-            comp = weight_components[client_id]
-            print(f"Client {client_id}: R={comp['reliability']:.3f}, S={comp['similarity']:.3f}, "
-                f"Q={comp['quality']:.3f} → W={weights[client_id]:.3f}")
+        # print(f"\n=== ROUND {current_round} WEIGHT CALCULATION ===")
+        # for client_id in selected_clients:
+        #     comp = weight_components[client_id]
+        #     print(f"Client {client_id}: R={comp['reliability']:.3f}, S={comp['similarity']:.3f}, "
+        #         f"Q={comp['quality']:.3f} → W={weights[client_id]:.3f}")
         
-        weight_std = np.std(list(weights.values()))
-        print(f"Weight std: {weight_std:.4f} (higher = more differentiation)")
+        # weight_std = np.std(list(weights.values()))
+        # print(f"Weight std: {weight_std:.4f} (higher = more differentiation)")
         
         return weights
