@@ -4,14 +4,13 @@ import time
 import numpy as np
 from tqdm import tqdm
 import torch
-
-from update import LocalUpdate, test_inference
-from models import CNNCifar
-from utils_dir import get_dataset, exp_details
-
 import sys
+
 sys.path.append('../')
 from options import args_parser
+from update import LocalUpdate, test_inference
+from models import CNNCifar
+from utils_dir import get_dataset, exp_details, check_gpu_pytorch
 
 def power_of_choice_selection(user_groups, num_users, fraction, d=10):
     m = max(int(fraction * num_users), 1)
@@ -29,10 +28,9 @@ if __name__ == '__main__':
     args = args_parser()
     args.d = getattr(args, 'd', 10)
     
-    if args.gpu_id:
-        torch.cuda.set_device(args.gpu_id)
-    device = 'cuda' if args.gpu else 'cpu'
-    
+
+    device = check_gpu_pytorch()
+
     train_dataset, test_dataset, user_groups = get_dataset(args)
     
     if args.model == 'cnn':
@@ -97,7 +95,6 @@ if __name__ == '__main__':
         
         if epoch % 1 == 0:
             test_acc, _ = test_inference(args, global_model, test_dataset)
-            print(f"Round {epoch+1}: Test Accuracy = {test_acc*100:.2f}%")
-    
+            print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc*100:.2f}%")    
     test_acc, _ = test_inference(args, global_model, test_dataset)
     print(f"Final Test Accuracy: {test_acc*100:.2f}%")
