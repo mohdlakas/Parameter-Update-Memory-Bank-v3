@@ -5,6 +5,7 @@ import logging
 from memory_bank import MemoryBank
 from intelligent_selector import IntelligentSelector
 from quality_metric2 import QualityMetric, GenerousQualityMetric
+#from quality_metric import QualityMetric
 from embedding_generator import EmbeddingGenerator
 
 class PUMBFederatedServer:
@@ -35,36 +36,36 @@ class PUMBFederatedServer:
         self.prev_model_state = None
         self.current_round = 0
 
-        # Setup logging
-        self.logger = logging.getLogger('PUMB_FederatedServer')
-        if not self.logger.handlers:
-            # Create logs directory
-            import os
-            from datetime import datetime
-            log_dir = '../save/logs'
-            os.makedirs(log_dir, exist_ok=True)
+        # # Setup logging
+        # self.logger = logging.getLogger('PUMB_FederatedServer')
+        # if not self.logger.handlers:
+        #     # Create logs directory
+        #     import os
+        #     from datetime import datetime
+        #     log_dir = '../save/logs'
+        #     os.makedirs(log_dir, exist_ok=True)
             
-            # Create timestamped log file
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            log_file = f'{log_dir}/pumb_server_{timestamp}.log'
+        #     # Create timestamped log file
+        #     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        #     log_file = f'{log_dir}/pumb_server_{timestamp}.log'
             
-            # File handler
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        #     # File handler
+        #     file_handler = logging.FileHandler(log_file)
+        #     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             
-            # Console handler (optional - keep both)
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        #     # Console handler (optional - keep both)
+        #     console_handler = logging.StreamHandler()
+        #     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             
-            self.logger.addHandler(file_handler)
-            self.logger.addHandler(console_handler)  # Remove this line if you want file-only
-            self.logger.setLevel(logging.INFO)
+        #     self.logger.addHandler(file_handler)
+        #     self.logger.addHandler(console_handler)  # Remove this line if you want file-only
+        #     self.logger.setLevel(logging.INFO)
             
-            print(f"📝 PUMB Server logging to: {log_file}")
+        #     print(f"📝 PUMB Server logging to: {log_file}")
 
     def select_clients(self, available_clients, num_clients):
         """Select clients for the current round."""
-        self.logger.info(f"Round {self.current_round}: Selecting {num_clients} clients from {len(available_clients)} available")
+        #self.logger.info(f"Round {self.current_round}: Selecting {num_clients} clients from {len(available_clients)} available")
         
         selected = self.client_selector.select_clients(
             available_clients,
@@ -72,8 +73,8 @@ class PUMBFederatedServer:
             self.current_round,
             self.global_direction
         )
-        
-        self.logger.info(f"Selected clients: {selected}")
+
+        #self.logger.info(f"Selected clients: {selected}")
         return selected
 
 
@@ -95,9 +96,9 @@ class PUMBFederatedServer:
                 current_round=self.current_round
             )
 
-        print(f"Round {self.current_round}: Weights = {aggregation_weights}")
-        print(f"Round {self.current_round}: Weight sum = {sum(aggregation_weights.values())}")
-        print(f"Round {self.current_round}: Weight std = {np.std(list(aggregation_weights.values()))}")
+        # print(f"Round {self.current_round}: Weights = {aggregation_weights}")
+        # print(f"Round {self.current_round}: Weight sum = {sum(aggregation_weights.values())}")
+        # print(f"Round {self.current_round}: Weight std = {np.std(list(aggregation_weights.values()))}")
         
         # Aggregate full parameter states
         new_state_dict = {}
