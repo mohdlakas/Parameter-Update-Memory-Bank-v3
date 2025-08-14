@@ -70,37 +70,23 @@ def parse_training_curves(output_text, method_name):
     lines = output_text.split('\n')
     
     for line in lines:
-        # NEW PATTERN: "Round X: Test Accuracy = Y%"  
-        test_only_match = re.search(r'Round\s+(\d+).*?Test\s+Accuracy\s*=\s*([\d\.]+)%', line, re.IGNORECASE)
-        if test_only_match:
-            test_acc = float(test_only_match.group(2)) / 100.0
-            test_accuracies.append(test_acc)
-            continue
+        if "Round" in line and "Train Accuracy" in line and "Test Accuracy" in line:
+            # Extract each metric separately
+            train_match = re.search(r'Train\s+Accuracy\s*=\s*([\d\.]+)%', line)
+            test_match = re.search(r'Test\s+Accuracy\s*=\s*([\d\.]+)%', line)
+            loss_match = re.search(r'Loss\s*=\s*([\d\.]+)', line)
+            
+            if train_match and test_match:
+                train_accuracies.append(float(train_match.group(1)) / 100.0)   # ← train_match
+                test_accuracies.append(float(test_match.group(1)) / 100.0)     # ← test_match
+                
+                if loss_match:
+                    train_losses.append(float(loss_match.group(1)))
         
-        # Pattern 1: "Round X: Train Acc = Y%, Test Acc = Z%"
-        round_match = re.search(r'Round\s+(\d+).*?Train.*?Acc.*?(\d+\.?\d*)%.*?Test.*?Acc.*?(\d+\.?\d*)%', line, re.IGNORECASE)
-        if round_match:
-            train_acc = float(round_match.group(2)) / 100.0
-            test_acc = float(round_match.group(3)) / 100.0
-            train_accuracies.append(train_acc)
-            test_accuracies.append(test_acc)
-            continue
-            
-        # Pattern 2: "Training accuracy: X%, Test accuracy: Y%"
-        acc_match = re.search(r'Training accuracy:\s*(\d+\.?\d*)%.*?Test accuracy:\s*(\d+\.?\d*)%', line, re.IGNORECASE)
-        if acc_match:
-            train_acc = float(acc_match.group(1)) / 100.0
-            test_acc = float(acc_match.group(2)) / 100.0
-            train_accuracies.append(train_acc)
-            test_accuracies.append(test_acc)
-            continue
-            
-        # Pattern 3: Loss values
-        loss_match = re.search(r'(?:Loss|loss).*?(\d+\.?\d+)', line)
-        if loss_match and 'Round' in line:
-            loss_val = float(loss_match.group(1))
-            train_losses.append(loss_val)
-            continue
+        elif "Training Loss :" in line:
+            loss_match = re.search(r'Training Loss\s*:\s*([\d\.]+)', line)
+            if loss_match:
+                train_losses.append(float(loss_match.group(1)))
     
     print(f"📊 {method_name}: Extracted {len(train_accuracies)} train accuracies, "
           f"{len(test_accuracies)} test accuracies, {len(train_losses)} losses")
@@ -185,8 +171,9 @@ def create_comparison_plots(all_results, timestamp):
     plt.tight_layout()
     
     # Save plots
-    os.makedirs('../../save/images', exist_ok=True)
-    plot_path = f'../../save/images/comprehensive_comparison_{timestamp}.png'
+    save_dir = os.path.join('..', '..', 'save', 'images')
+    os.makedirs(save_dir, exist_ok=True)
+    plot_path = os.path.join(save_dir, f'comprehensive_comparison_{timestamp}.png')
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
     
@@ -214,8 +201,10 @@ def save_detailed_results(all_results, timestamp):
     df_summary = pd.DataFrame(detailed_data)
     
     # Save summary CSV
-    os.makedirs('../../save/logs', exist_ok=True)
-    summary_path = f'../../save/logs/detailed_comparison_{timestamp}.csv'
+    logs_dir = os.path.join('..', '..', 'save', 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    summary_path = os.path.join(logs_dir, f'detailed_comparison_{timestamp}.csv')
+    curves_path = os.path.join(logs_dir, f'training_curves_{timestamp}.csv')
     df_summary.to_csv(summary_path, index=False)
     
     # Save individual training curves
@@ -254,9 +243,9 @@ def main():
         'dataset': 'cifar',
         'model': 'cnn',
         'epochs': 3,  # Reduced for faster testing
-        'num_users': 20,
-        'frac': 0.1,
-        'local_ep': 3,
+        'num_users': 3,
+        'frac': 0.2,
+        'local_ep': 5,
         'local_bs': 32,
         'lr': 0.0005,
         'iid': 0,
@@ -271,7 +260,7 @@ def main():
         ('SCAFFOLD.py', 'SCAFFOLD', base_args),
         ('Power_of_Choice.py', 'Power-of-Choice', {**base_args, 'd': 10}),
         ('FedNova.py', 'FedNova', {**base_args, 'gm': 1.0, 'tau': 5}),
-        ('../federated_pumb_main.py', 'PUMB', {**base_args, 'pumb_exploration_ratio': 0.4, 'pumb_initial_rounds': 10}),
+        ('../federated_pumb_main.py', 'PUMB', {**base_args, 'pumb_exploration_ratio': 0.5, 'pumb_initial_rounds': 10}),
     ]
     
     # Run experiments
