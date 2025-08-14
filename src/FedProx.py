@@ -4,14 +4,14 @@ import time
 import numpy as np
 from tqdm import tqdm
 import torch
-
-from update import LocalUpdate, test_inference
-from models import CNNCifar
-from utils_dir import get_dataset, exp_details
-
 import sys
+
 sys.path.append('../')
 from options import args_parser
+from models import CNNCifar
+from utils_dir import get_dataset, exp_details , check_gpu_pytorch
+from update import LocalUpdate, test_inference
+
 
 class FedProxLocalUpdate(LocalUpdate):
     def __init__(self, args, dataset, idxs, logger, mu=0.01):
@@ -19,7 +19,22 @@ class FedProxLocalUpdate(LocalUpdate):
         self.mu = mu
         
     def update_weights(self, model, global_round):
+        # Set model to train mode
         model.train()
+        
+        # Initialize device and criterion if not already done
+        if self.device is None:
+            self.device = next(model.parameters()).device
+            self.criterion = self.criterion.to(self.device)
+        
+        # Initialize optimizer for the current model
+        if self.args.optimizer == 'sgd':
+            self.optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr,
+                                           momentum=self.args.momentum)
+        elif self.args.optimizer == 'adam':
+            self.optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr,
+                                            weight_decay=1e-4)
+        
         epoch_loss = []
         global_weights = copy.deepcopy(model.state_dict())
         
@@ -51,10 +66,9 @@ if __name__ == '__main__':
     args = args_parser()
     args.mu = getattr(args, 'mu', 0.01)
     
-    if args.gpu_id:
-        torch.cuda.set_device(args.gpu_id)
-    device = 'cuda' if args.gpu else 'cpu'
-    
+
+    device = check_gpu_pytorch()
+
     # Load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
     
@@ -123,8 +137,6 @@ if __name__ == '__main__':
         # Print progress every round
         if epoch % 1 == 0:
             test_acc, _ = test_inference(args, global_model, test_dataset)
-            print(f"Round {epoch+1}: Test Accuracy = {test_acc*100:.2f}%")
-    
-    # Final evaluation
+            print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc*100:.2f}%, Loss = {loss_avg:.4f}")
     test_acc, _ = test_inference(args, global_model, test_dataset)
     print(f"Final Test Accuracy: {test_acc*100:.2f}%")
