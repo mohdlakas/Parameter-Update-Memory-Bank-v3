@@ -93,8 +93,10 @@ if __name__ == '__main__':
         
         train_accuracy.append(np.mean(list_acc))
         
-        if epoch % 1 == 0:
-            test_acc, _ = test_inference(args, global_model, test_dataset)
-            print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc*100:.2f}%")    
+# Find the print statement around line 83 and add Loss:
+
+    if epoch % 1 == 0:
+        test_acc, _ = test_inference(args, global_model, test_dataset)
+        print(f"Round {epoch+1}: Train Accuracy = {train_accuracy[-1]*100:.2f}%, Test Accuracy = {test_acc*100:.2f}%, Loss = {loss_avg:.4f}")
     test_acc, _ = test_inference(args, global_model, test_dataset)
     print(f"Final Test Accuracy: {test_acc*100:.2f}%")
