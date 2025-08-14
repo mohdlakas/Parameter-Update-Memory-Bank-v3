@@ -54,24 +54,24 @@ if __name__ == '__main__':
     title="Client Data Distribution (IID={})".format(args.iid)
     )
 
-    # BUILD MODEL
+# Build model
     if args.model == 'cnn':
-        # Convolutional neural netork
-        if args.dataset == 'mnist':
-            global_model = CNNMnist(args=args)
-        elif args.dataset == 'fmnist':
-            global_model = CNNFashion_Mnist(args=args)
-        elif args.dataset == 'cifar' or args.dataset == 'cifar100':
-            global_model = CNNCifar(args=args)
-    elif args.model == 'mlp':
-        # Multi-layer preceptron
-        img_size = train_dataset[0][0].shape
-        len_in = 1
-        for x in img_size:
-            len_in *= x
-        global_model = MLP(dim_in=len_in, dim_hidden=64,dim_out=args.num_classes)
+        # Force correct number of classes before model creation
+        if args.dataset == 'cifar100':
+            args.num_classes = 100
+            print(f"FORCED: Setting num_classes to {args.num_classes} for CIFAR-100")
+        elif args.dataset == 'cifar' or args.dataset == 'cifar10':
+            args.num_classes = 10
+            print(f"FORCED: Setting num_classes to {args.num_classes} for CIFAR-10")
+        else:
+            exit(f'Error: unsupported dataset {args.dataset}. Only cifar10 and cifar100 are supported.')
+            
+        # Create model with correct output dimensions
+        global_model = CNNCifar(args)
+        print(f"Model created with {global_model.fc2.out_features} output classes")
+        
     else:
-        exit('Error: unrecognized model')
+        exit('Error: only CNN model is supported. Use --model=cnn')
 
     # Set the model to train and send it to device.
     global_model.to(device)
@@ -174,6 +174,7 @@ if __name__ == '__main__':
 
         train_accuracy.append(sum(list_acc)/len(list_acc))
         
+        
         # Collect data for comprehensive analysis
         round_time = time.time() - round_start_time
         
@@ -190,14 +191,14 @@ if __name__ == '__main__':
             # Normalize by data size for basic reliability metric
             reliability = (loss_improvement + 1e-6) * data_sizes[client_id] / 1000.0
             client_reliabilities[client_id] = min(1.0, reliability)  # Cap at 1.0
-
+        
         test_acc_current, _ = test_inference(args, global_model, test_dataset)
         print(f"Round {epoch+1}: Test Accuracy = {test_acc_current*100:.2f}%")
-      
+
         # Test accuracy every 5 rounds for detailed tracking
-        #test_acc_current = None
-        #if (epoch + 1) % 5 == 0:
-        #    test_acc_current, _ = test_inference(args, global_model, test_dataset)
+        test_acc_current = None
+        if (epoch + 1) % 5 == 0:
+            test_acc_current, _ = test_inference(args, global_model, test_dataset)
         
         # Log all data to analyzer (adapted for FedAvg)
         analyzer.log_round_data(
@@ -297,6 +298,8 @@ if __name__ == '__main__':
     # Print key metrics to console for immediate feedback
     convergence_metrics = analyzer.calculate_convergence_metrics()
     client_analysis = analyzer.analyze_client_selection_quality()
+    
+    print(f"Final Test Accuracy: {test_acc*100:.2f}%")
     
     print(f"\n🔍 FEDAVG RESULTS SUMMARY:")
     print(f"   Final Test Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")
