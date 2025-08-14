@@ -82,7 +82,7 @@ class MemoryBank:
     def update_round_count(self):
         """Increment the round counter - call this once per round."""
         self.round_count += 1
-        print(f"Memory Bank: Round count updated to {self.round_count}")
+        #print(f"Memory Bank: Round count updated to {self.round_count}")
 
     def store_global_state(self, round_num, global_state):
         """Store global model state for a round."""
@@ -101,7 +101,7 @@ class MemoryBank:
                 self.global_states[round_num] = global_state.cpu().detach().clone()
             else:
                 self.global_states[round_num] = global_state
-        print(f"Memory Bank: Stored global state for round {round_num}")
+        #print(f"Memory Bank: Stored global state for round {round_num}")
         
     # Keep your existing methods unchanged
     def _rebuild_index(self):
@@ -153,7 +153,7 @@ class MemoryBank:
     def compute_similarity(self, client_id, current_embedding):
         """Compute similarity with historical embeddings using AVERAGE instead of MAX."""
         if client_id not in self.client_embeddings or len(self.client_embeddings[client_id]) == 0:
-            print(f"  No history for client {client_id}, using default similarity")
+            #print(f"  No history for client {client_id}, using default similarity")
             return 0.5
         
         similarities = []
@@ -169,20 +169,20 @@ class MemoryBank:
                 hist_emb = historical_embedding.float()
             sim = F.cosine_similarity(curr_emb.unsqueeze(0), hist_emb.unsqueeze(0)).item()
             similarities.append(sim)
-            print(f"  Client {client_id} vs history[{i}]: {sim:.4f}")
-        
+            #print(f"  Client {client_id} vs history[{i}]: {sim:.4f}")
+
         # FIX: Use average similarity instead of maximum
         if similarities:
             avg_similarity = sum(similarities) / len(similarities)
-            print(f"Client {client_id} average similarity: {avg_similarity:.4f}")
-            
+            #print(f"Client {client_id} average similarity: {avg_similarity:.4f}")
+
             # Optional: Apply slight penalty for very high similarities to encourage diversity
             if avg_similarity > 0.95:
                 final_similarity = avg_similarity * 0.9  # 10% penalty for very high similarity
             else:
                 final_similarity = avg_similarity
-                
-            print(f"Client {client_id} final similarity: {final_similarity:.4f}")
+
+            #print(f"Client {client_id} final similarity: {final_similarity:.4f}")
             return final_similarity
         else:
             return 0.5
