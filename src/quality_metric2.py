@@ -2,14 +2,7 @@ import numpy as np
 import torch
 import logging
 
-# For improved balance
-#server.quality_calc = QualityMetric(alpha=0.4, beta=0.3, gamma=0.3)
 
-# For better exploration  
-#server.quality_calc = GenerousQualityMetric()
-
-# For debugging
-#server.quality_calc = DebuggingQualityMetric()
 
 class QualityMetric:
     """
@@ -23,7 +16,7 @@ class QualityMetric:
     5. Cross-client normalization within each round
     """
     
-    def __init__(self, alpha=0.4, beta=0.3, gamma=0.3):  # FIXED: More balanced weights
+    def __init__(self, alpha=0.6, beta=0.3, gamma=0.1):  # FIXED: More balanced weights
         """
         IMPROVED: More balanced quality assessment
         - Reduced loss weight from 0.6 to 0.4
@@ -72,9 +65,9 @@ class QualityMetric:
         quality = max(0.1, min(1.0, quality))  # More generous floor (0.1 instead of 0.01)
         
         # Enhanced logging
-        self.logger.info(f"Client {client_id} R{round_num}: "
-                        f"Q_loss={Q_loss:.4f}, Q_consistency={Q_consistency:.4f}, "
-                        f"Q_data={Q_data:.4f}, final={quality:.4f}")
+        # self.logger.info(f"Client {client_id} R{round_num}: "
+        #                 f"Q_loss={Q_loss:.4f}, Q_consistency={Q_consistency:.4f}, "
+        #                 f"Q_data={Q_data:.4f}, final={quality:.4f}")
         
         # Track for normalization
         self.consistency_scores_history.append(Q_consistency)
@@ -195,93 +188,111 @@ class GenerousQualityMetric(QualityMetric):
     to encourage more client participation
     """
     
-    def __init__(self, alpha=0.3, beta=0.3, gamma=0.4):  # Even more balanced
+    def __init__(self, alpha=0.6, beta=0.3, gamma=0.1):  # CIFAR-100 optimized weights
         super().__init__(alpha, beta, gamma)
-        self.baseline_quality = 0.3  # Higher baseline quality
+        self.baseline_quality = 0.5  # Much higher baseline quality
+        
+        # Set up file logging to same directory as comprehensive analysis
+        from datetime import datetime
+        import os
+        
+        # Create logs directory if it doesn't exist
+        log_dir = '../save/logs'
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Create timestamped log file in same location as comprehensive analysis
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_file = f'{log_dir}/generous_quality_{timestamp}.log'
+        
+        # Check if file handler already exists to avoid duplicates
+        has_file_handler = any(isinstance(h, logging.FileHandler) for h in self.logger.handlers)
+        
+        if not has_file_handler:
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.logger.addHandler(file_handler)
+            self.logger.setLevel(logging.INFO)
+            
+            # Test log to confirm it's working
+            self.logger.info("=== GENEROUS QUALITY METRIC INITIALIZED ===")
+            self.logger.info(f"Weights: alpha={alpha}, beta={beta}, gamma={gamma}")
+            self.logger.info(f"Baseline quality: {self.baseline_quality}")
+            self.logger.info("ADDRESSING CIFAR-100 PERFORMANCE ISSUES")
+            
+        print(f"📝 GenerousQualityMetric logging to: {log_file}")
+        
+        # Track quality statistics
+        self.quality_history = []
+        self.client_selections = {}
         
     def calculate_quality(self, loss_before, loss_after, data_sizes, param_update, 
                          round_num, client_id, all_loss_improvements=None):
         """
-        GENEROUS: Higher baseline quality to encourage exploration
+        ULTRA-GENEROUS: Much higher baseline quality to fix catastrophic performance
         """
         base_quality = super().calculate_quality(
             loss_before, loss_after, data_sizes, param_update,
             round_num, client_id, all_loss_improvements
         )
         
-        # Add exploration bonus for new/underused clients
+        # AGGRESSIVE exploration bonus for CIFAR-100
         exploration_bonus = 0.0
-        if round_num < 20:  # Early rounds get exploration bonus
-            exploration_bonus = 0.1 * (20 - round_num) / 20
+        if round_num < 10:  # Extended exploration phase
+            exploration_bonus = 0.2 * (10 - round_num) / 10  # Larger bonus
             
-        # Ensure minimum quality for exploration
-        generous_quality = max(self.baseline_quality, base_quality + exploration_bonus)
+        # Client diversity bonus - reward less frequently selected clients
+        if client_id not in self.client_selections:
+            self.client_selections[client_id] = 0
+        self.client_selections[client_id] += 1
         
-        self.logger.info(f"Client {client_id}: base={base_quality:.4f}, "
-                        f"bonus={exploration_bonus:.4f}, generous={generous_quality:.4f}")
+        # Bonus for underused clients
+        avg_selections = np.mean(list(self.client_selections.values())) if self.client_selections else 1
+        client_usage = self.client_selections[client_id]
+        diversity_bonus = max(0, 0.1 * (avg_selections - client_usage) / avg_selections)
         
+        # MUCH more generous quality calculation
+        generous_quality = max(
+            self.baseline_quality,  # 0.4 baseline
+            base_quality + exploration_bonus + diversity_bonus
+        )
+        
+        # Track statistics
+        self.quality_history.append(generous_quality)
+        
+        # # Enhanced logging with performance context
+        # self.logger.info(f"R{round_num} Client {client_id}: base={base_quality:.4f}, "
+        #                 f"explore_bonus={exploration_bonus:.4f}, "
+        #                 f"diversity_bonus={diversity_bonus:.4f}, "
+        #                 f"final={generous_quality:.4f}, "
+        #                 f"selections={client_usage}")
+        
+        # Log statistics every 5 rounds for better monitoring
+        if round_num % 5 == 0 and len(self.quality_history) > 10:
+            recent_qualities = self.quality_history[-50:]
+            mean_q = np.mean(recent_qualities)
+            std_q = np.std(recent_qualities)
+            min_q = np.min(recent_qualities)
+            max_q = np.max(recent_qualities)
+            
+            self.logger.info(f"=== QUALITY STATS ROUND {round_num} ===")
+            self.logger.info(f"Recent qualities: mean={mean_q:.4f}, std={std_q:.4f}, "
+                           f"min={min_q:.4f}, max={max_q:.4f}")
+            self.logger.info(f"Client selections: {len(self.client_selections)} unique clients")
+            self.logger.info(f"Selection distribution: min={min(self.client_selections.values())}, "
+                           f"max={max(self.client_selections.values())}, "
+                           f"avg={np.mean(list(self.client_selections.values())):.1f}")
+            
+            # CRITICAL: Log if performance is still terrible
+            if round_num > 10 and mean_q < 0.5:
+                self.logger.warning(f"LOW QUALITY SCORES DETECTED! Mean quality {mean_q:.4f} may cause poor performance")
+                
         return min(1.0, generous_quality)
 
 
-# DEBUGGING: Quality metric that logs detailed statistics
-class DebuggingQualityMetric(QualityMetric):
-    """
-    DEBUG VERSION: Logs detailed statistics to understand quality distribution
-    """
-    
-    def __init__(self, alpha=0.4, beta=0.3, gamma=0.3):
-        super().__init__(alpha, beta, gamma)
-        self.quality_stats = {
-            'all_qualities': [],
-            'loss_components': [],
-            'consistency_components': [],
-            'data_components': []
-        }
-        
-    def calculate_quality(self, loss_before, loss_after, data_sizes, param_update, 
-                         round_num, client_id, all_loss_improvements=None):
-        """
-        DEBUG: Calculate quality with detailed logging
-        """
-        quality = super().calculate_quality(
-            loss_before, loss_after, data_sizes, param_update,
-            round_num, client_id, all_loss_improvements
-        )
-        
-        # Store for statistics
-        self.quality_stats['all_qualities'].append(quality)
-        
-        # Log statistics every 10 rounds
-        if round_num % 10 == 0 and len(self.quality_stats['all_qualities']) > 10:
-            qualities = self.quality_stats['all_qualities'][-50:]  # Last 50
-            self.logger.info(f"=== QUALITY STATISTICS ROUND {round_num} ===")
-            self.logger.info(f"Mean quality: {np.mean(qualities):.4f}")
-            self.logger.info(f"Std quality: {np.std(qualities):.4f}")
-            self.logger.info(f"Min quality: {np.min(qualities):.4f}")
-            self.logger.info(f"Max quality: {np.max(qualities):.4f}")
-            self.logger.info(f"% above 0.5: {np.mean(np.array(qualities) > 0.5)*100:.1f}%")
-            
-        return quality
 
 
-# RECOMMENDED USAGE EXAMPLES:
+
 """
-To fix your PUMB performance, choose one of these options:
-
-1. IMMEDIATE FIX - Use GenerousQualityMetric:
-   quality_calc = GenerousQualityMetric(alpha=0.3, beta=0.3, gamma=0.4)
-   
-2. FOR DEBUGGING - Use DebuggingQualityMetric:
-   quality_calc = DebuggingQualityMetric()
-   
-3. STANDARD IMPROVED - Use QualityMetric with new defaults:
-   quality_calc = QualityMetric(alpha=0.4, beta=0.3, gamma=0.3)
-   
-4. ADJUST WEIGHTS based on your domain:
-   - More loss-focused: QualityMetric(alpha=0.5, beta=0.2, gamma=0.3)
-   - More data-focused: QualityMetric(alpha=0.2, beta=0.3, gamma=0.5)
-   - Balanced: QualityMetric(alpha=0.3, beta=0.3, gamma=0.4)
-
 The key insight: Your current harsh quality assessment (mean 0.166) is causing 
 over-exploitation. A more generous baseline will improve exploration and should 
 boost your overall federated learning performance.
