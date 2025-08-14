@@ -15,7 +15,22 @@ from sampling_dir import (cifar10_iid, cifar10_dirichlet, cifar100_iid, cifar100
 # Legacy imports (commented out - use modern Dirichlet methods instead)
 # from sampling import mnist_noniid, mnist_noniid_unequal, cifar_noniid
 
-
+def check_gpu_pytorch():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        gpu_count = torch.cuda.device_count()
+        gpu_name = torch.cuda.get_device_name(0)
+        
+        print(f"GPU is available!")
+        print(f"Number of GPUs: {gpu_count}")
+        print(f"GPU Name: {gpu_name}")
+        print(f"Current GPU: {torch.cuda.current_device()}")
+        
+        return device
+    else:
+        print("GPU is not available, using CPU")
+        return torch.device("cpu")
+    
 def get_dataset(args):
     """ 
     Returns train and test datasets and a user group which is a dict where
@@ -57,8 +72,8 @@ def get_dataset(args):
         else:
             # Modern Dirichlet-based Non-IID distribution
             alpha = getattr(args, 'alpha', 0.5)  # Default alpha if not specified
-            min_samples = getattr(args, 'min_samples', 50)  # Default min samples
-            
+            min_samples = getattr(args, 'min_samples', 50) # Default min samples
+
             print(f"Creating Non-IID data distribution for {args.dataset.upper()} with alpha={alpha}...")
             
             if args.dataset == 'cifar':
@@ -163,49 +178,7 @@ def average_weights(w):
     return w_avg
 
 
-# def exp_details(args):
-#     """
-#     Print experiment details with modern Dirichlet distribution information
-#     """
-#     print('\nExperimental details:')
-#     print(f'    Model     : {args.model}')
-#     print(f'    Optimizer : {args.optimizer}')
-#     print(f'    Learning  : {args.lr}')
-#     print(f'    Global Rounds   : {args.epochs}')
-#     print(f'    Dataset   : {args.dataset.upper()}')
-#     print(f'    Classes   : {args.num_classes}')
-#     print(f'    Channels  : {args.num_channels}\n')
 
-#     print('    Federated parameters:')
-#     if args.iid:
-#         print('    Distribution: IID')
-#     else:
-#         print('    Distribution: Non-IID (Dirichlet)')
-#         alpha = getattr(args, 'alpha', 0.5)
-#         print(f'    Dirichlet Alpha: {alpha}')
-        
-#         # Provide interpretation of alpha value
-#         if alpha >= 10.0:
-#             print('    Heterogeneity: Nearly IID')
-#         elif alpha >= 1.0:
-#             print('    Heterogeneity: Moderate')
-#         elif alpha >= 0.5:
-#             print('    Heterogeneity: High')
-#         elif alpha >= 0.1:
-#             print('    Heterogeneity: Extreme')
-#         else:
-#             print('    Heterogeneity: Very Extreme')
-            
-#         min_samples = getattr(args, 'min_samples', 10)
-#         print(f'    Min samples per user: {min_samples}')
-    
-#     print(f'    Total users: {args.num_users}')
-#     print(f'    Fraction of users: {args.frac}')
-#     print(f'    Local Batch size: {args.local_bs}')
-#     print(f'    Local Epochs: {args.local_ep}\n')
-    
-    
-#     return
 
 def exp_details(args):
     """
